@@ -662,6 +662,10 @@ mod fs_tests {
             eprintln!("ignoré : icacls /deny refusé");
             return;
         }
+        if std::fs::read_dir(&d.0 .0).is_ok() {
+            eprintln!("ignoré : le refus n'empêche pas ce processus de lister (privilège de sauvegarde actif ?)");
+            return;
+        }
         let (t, s) = scan_with(Scan::start(d.0 .0.clone()), &d.0 .0);
         assert!(s.root_denied());
         assert!(s.errors() >= 1);
