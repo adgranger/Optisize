@@ -1,0 +1,15 @@
+[package]
+name = "optisize"
+version = "0.1.0"
+edition = "2021"
+description = "Analyseur d'espace disque rapide (alternative à TreeSize Free)"
+
+[dependencies]
+crossbeam-channel = "0.5"
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "clipboard"] }
+rfd = "0.18"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
