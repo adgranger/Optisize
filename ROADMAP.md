@@ -35,7 +35,7 @@ Dépend de = identifiants qui doivent être `done` avant de commencer.
 | F03 | Embarquer la police JetBrains Mono pour les tailles | — | sonnet | `docs/cards/F03-police-jetbrains-mono.md` | done |
 | F04 | Taille allouée (clusters) en plus de la taille logique, avec bascule ; liens physiques, fichiers creux, compressés | — | opus | `docs/cards/F04-taille-sur-disque.md` | done |
 | F05 | Benchmark reproductible contre TreeSize et WizTree, profilage et optimisation du scan | — | opus | `docs/cards/F05-benchmark-profilage-scan.md` | done |
-| F06 | CI GitHub Actions (build, clippy, test) | — | sonnet | — | todo |
+| F06 | CI GitHub Actions (build, clippy, test) | — | sonnet | `docs/cards/F06-ci-github-actions.md` | ready |
 
 ### Phase 1 — Vues et navigation
 
