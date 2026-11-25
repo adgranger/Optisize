@@ -43,7 +43,7 @@ Dépend de = identifiants qui doivent être `done` avant de commencer.
 |---|---|---|---|---|---|
 | F07 | Bascule des vues Détails / Carte / Types (F6–F8) | F01 | sonnet | `docs/cards/F07-bascule-vues.md` | done |
 | F08 | Zoom du treemap : double-clic pour entrer dans un dossier, fil d'Ariane, retour | — | sonnet | `docs/cards/F08-zoom-treemap.md` | done |
-| F09 | Vue « 100 plus gros fichiers » (F9) | — | sonnet | `docs/cards/F09-cent-plus-gros-fichiers.md` | doing |
+| F09 | Vue « 100 plus gros fichiers » (F9) | — | sonnet | `docs/cards/F09-cent-plus-gros-fichiers.md` | done |
 | F10 | Vue « Fichiers les plus anciens » / répartition par âge | F02 | sonnet | — | todo |
 | F11 | Recherche avancée (Ctrl+F) : `*.mp4`, `>1Go`, dates, combinaisons | — | sonnet | — | todo |
 | F12 | Sélection multiple et Tout sélectionner (Ctrl+A) | — | sonnet | — | todo |
