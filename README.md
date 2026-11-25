@@ -18,6 +18,6 @@ cargo test; cargo clippy --all-targets
 ## État
 
 Fonctionnel : scan, arbre, treemap, types, lecteurs (ré-énumérés à la fin de chaque scan), filtre par nom, Ouvrir dans l'Explorateur, Copier le chemin, « Choisir un dossier… » (Ctrl+O, dialogue modal) et clic sur une puce de lecteur (annulent un scan en cours) via une entrée unique `App::open`.
-Limite : la validation d'un chemin réseau injoignable est bloquante quelques secondes.
+Limites : la toute première ouverture du dialogue après le lancement peut s'ouvrir sur « Ce PC » au lieu du dossier courant ; clé USB, lecteur vide et partage UNC non vérifiés (pas de matériel) ; la validation d'un chemin réseau injoignable est bloquante quelques secondes.
 Maquettes (rien n'est supprimé sur le disque) : Nettoyer / Examiner et nettoyer, Corbeille, exports, scans enregistrés, et les entrées de menu grisées.
 TODO : taille allouée (clusters) au lieu de la taille logique, dates en heure locale, JetBrains Mono embarquée.

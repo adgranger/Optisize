@@ -38,6 +38,12 @@ impl TreemapView {
         TreemapView { mode: Mode::Folders, cells: Vec::new(), key: (0, 0, u64::MAX), built: Instant::now() }
     }
 
+    /// À appeler quand l'arbre est remplacé : les anciennes `cells` indexeraient le nouvel arbre.
+    pub fn reset(&mut self) {
+        self.cells.clear();
+        self.key = (0, 0, u64::MAX);
+    }
+
     /// Retourne le dossier cliqué (id) le cas échéant.
     pub fn show(&mut self, ui: &mut Ui, tree: &Tree, selected: Option<u32>, scanning: bool, height: f32) -> Option<u32> {
         ui.horizontal(|ui| {
@@ -139,4 +145,18 @@ fn label(p: &egui::Painter, r: Rect, pad: f32, text: &str, color: Color32) {
         egui::FontId::proportional(12.0),
         color,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reset_clears_cells_and_key() {
+        let mut v = TreemapView::new();
+        v.cells.push(Cell { id: 1, rect: LRect::new(0.0, 0.0, 1.0, 1.0), depth: 0, is_dir: true, frame: false });
+        v.key = (10, 10, 3);
+        v.reset();
+        assert!(v.cells.is_empty() && v.key == (0, 0, u64::MAX));
+    }
 }

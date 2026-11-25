@@ -118,6 +118,7 @@ impl App {
         self.tree = Tree::new(root.clone());
         self.selected = None;
         self.tv.reset();
+        self.tm.reset();
         self.scan = Some(Scan::start(root));
         self.state = ScanState::Scanning;
         self.elapsed = Duration::ZERO;
