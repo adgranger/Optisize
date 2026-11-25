@@ -95,3 +95,4 @@ Dépend de = identifiants qui doivent être `done` avant de commencer.
 | F38 | Internationalisation FR / EN | F17 | sonnet | — | todo |
 | F39 | Accessibilité (clavier, contrastes, AccessKit) | — | sonnet | — | todo |
 | F40 | Captures de régression de l'interface | F06 | sonnet | — | todo |
+| F41 | Menu contextuel de l'Explorateur « Analyser avec Optisize » (dossiers, lecteurs, fond de dossier ; menu Windows 11 et menu classique) | F37 | opus | — | todo |
