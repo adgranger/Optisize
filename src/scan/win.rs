@@ -2,12 +2,13 @@
 //! identifiant de fichier sans aucun appel par fichier (même coût que `read_dir`).
 
 use super::tree::Entry;
-use super::{filetime_to_unix, on_disk, round_up, skipped};
+use super::{filetime_to_unix, ns, on_disk, round_up, skipped, Phases};
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use std::ptr::null_mut;
+use std::time::Instant;
 
 /// `FILE_ID_BOTH_DIR_INFO` ; le nom UTF-16 suit l'en-tête (offset 104).
 #[repr(C)]
@@ -146,10 +147,12 @@ pub(super) enum Fail {
 }
 
 /// Lit un dossier. Les erreurs partielles (après le premier appel) sont ajoutées à `errors`.
-pub(super) fn read_dir(path: &Path, cluster: u64, dedupe: bool, errors: &mut u64) -> Result<Vec<Entry>, Fail> {
+pub(super) fn read_dir(path: &Path, cluster: u64, dedupe: bool, errors: &mut u64, ph: &mut Phases) -> Result<Vec<Entry>, Fail> {
+    let t = Instant::now();
     let w = verbatim(path);
     // FILE_LIST_DIRECTORY, partage lecture|écriture|suppression, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS
     let h = unsafe { CreateFileW(w.as_ptr(), 0x0001, 0x7, null_mut(), 3, 0x0200_0000, null_mut()) };
+    ph.open += ns(t);
     if h as isize == -1 {
         return Err(Fail::Open);
     }
@@ -158,7 +161,9 @@ pub(super) fn read_dir(path: &Path, cluster: u64, dedupe: bool, errors: &mut u64
         let mut entries = Vec::new();
         let mut first = true;
         loop {
+            let t = Instant::now();
             let ok = unsafe { GetFileInformationByHandleEx(h.0, 10, buf.as_mut_ptr().cast(), (buf.len() * 8) as u32) };
+            ph.query += ns(t);
             if ok == 0 {
                 match unsafe { GetLastError() } {
                     18 => {} // ERROR_NO_MORE_FILES
@@ -168,7 +173,10 @@ pub(super) fn read_dir(path: &Path, cluster: u64, dedupe: bool, errors: &mut u64
                 break;
             }
             first = false;
-            if !parse(buf, path, cluster, dedupe, &mut entries) {
+            let t = Instant::now();
+            let ok = parse(buf, path, cluster, dedupe, &mut entries, &mut ph.wof_calls);
+            ph.parse += ns(t);
+            if !ok {
                 *errors += 1;
                 break;
             }
@@ -178,7 +186,7 @@ pub(super) fn read_dir(path: &Path, cluster: u64, dedupe: bool, errors: &mut u64
 }
 
 /// Décode un tampon rempli ; `false` si une entrée sort du tampon (on garde ce qui précède).
-fn parse(buf: &[u64], dir: &Path, cluster: u64, dedupe: bool, out: &mut Vec<Entry>) -> bool {
+fn parse(buf: &[u64], dir: &Path, cluster: u64, dedupe: bool, out: &mut Vec<Entry>, wof_calls: &mut u64) -> bool {
     let len = buf.len() * 8;
     let base = buf.as_ptr().cast::<u8>();
     let mut off = 0usize;
@@ -200,6 +208,7 @@ fn parse(buf: &[u64], dir: &Path, cluster: u64, dedupe: bool, out: &mut Vec<Entr
             } else {
                 let eof = d.eof.max(0) as u64;
                 let alloc = on_disk(eof, d.alloc.max(0) as u64, d.attr, cluster).unwrap_or_else(|| {
+                    *wof_calls += 1;
                     round_up(compressed_size(&dir.join(&name)).unwrap_or(eof), cluster)
                 });
                 let id = d.file_id as u64;

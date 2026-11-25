@@ -10,8 +10,8 @@ mod win;
 use crossbeam_channel::{Receiver, Sender};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering::Relaxed};
-use std::sync::Arc;
-use std::time::{Duration, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 use tree::Entry;
 
 pub struct Batch {
@@ -25,6 +25,49 @@ pub enum Msg {
     Done,
 }
 
+/// Temps cumulés des workers (nanosecondes), mesurés en permanence (≈ 25 ns par mesure),
+/// ajoutés une fois par worker à `Shared::phases`.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct Phases {
+    /// Ouverture du dossier (`CreateFileW`).
+    pub open: u64,
+    /// Appels `GetFileInformationByHandleEx`.
+    pub query: u64,
+    /// Décodage du tampon, appels WOF compris.
+    pub parse: u64,
+    /// Envoi du lot et mise en file des sous-dossiers.
+    pub send: u64,
+    /// Appels `GetCompressedFileSizeW`.
+    pub wof_calls: u64,
+    /// Dossiers dont la lecture a été tentée.
+    pub dirs_read: u64,
+}
+
+impl std::ops::AddAssign for Phases {
+    fn add_assign(&mut self, o: Phases) {
+        self.open += o.open;
+        self.query += o.query;
+        self.parse += o.parse;
+        self.send += o.send;
+        self.wof_calls += o.wof_calls;
+        self.dirs_read += o.dirs_read;
+    }
+}
+
+/// Nanosecondes écoulées depuis `t`.
+fn ns(t: Instant) -> u64 {
+    t.elapsed().as_nanos() as u64
+}
+
+/// Nombre de workers : `OPTISIZE_THREADS` (1..=64, réglage de mesure) sinon cœurs logiques bornés
+/// à 4..8 (F05 : au-delà de 8 l'ouverture des dossiers se sérialise dans le noyau, voir docs/bench.md).
+fn worker_count(env: Option<&str>, cpus: usize) -> usize {
+    env.and_then(|s| s.trim().parse().ok()).filter(|n| (1..=64).contains(n)).unwrap_or(cpus.clamp(4, 8))
+}
+
+/// Dossier à lire : id réservé, chemin complet.
+type Task = (u32, PathBuf);
+
 struct Shared {
     cancel: AtomicBool,
     paused: AtomicBool,
@@ -32,11 +75,15 @@ struct Shared {
     pending: AtomicUsize,
     alive: AtomicUsize,
     errors: AtomicU64,
+    /// La racine elle-même n'a pas pu être lue (ACL, dossier protégé).
+    root_denied: AtomicBool,
+    phases: Mutex<Phases>,
+    threads: usize,
     /// Volume NTFS ou ReFS : identifiants de fichier fiables, liens physiques dédoublonnés.
     fs_dedupe: bool,
     /// Taille de cluster du volume (0 si inconnue : ni arrondi ni seuil).
     cluster: u64,
-    tasks: Sender<(u32, PathBuf)>,
+    tasks: Sender<Task>,
     results: Sender<Msg>,
 }
 
@@ -47,12 +94,16 @@ pub struct Scan {
 
 impl Scan {
     pub fn start(root: PathBuf) -> Scan {
+        let cpus = std::thread::available_parallelism().map_or(2, |n| n.get());
+        Scan::start_with(root, worker_count(std::env::var("OPTISIZE_THREADS").ok().as_deref(), cpus))
+    }
+
+    pub(crate) fn start_with(root: PathBuf, n: usize) -> Scan {
         // Les workers utilisent des chemins verbatim (préfixe `\\?\`) : il les faut absolus.
         let root = std::path::absolute(&root).unwrap_or(root);
         let (fs, cluster) = volume_info(&root);
         let (task_tx, task_rx) = crossbeam_channel::unbounded();
         let (res_tx, res_rx) = crossbeam_channel::unbounded();
-        let n = std::thread::available_parallelism().map_or(4, |n| n.get() * 2).clamp(4, 32);
         let shared = Arc::new(Shared {
             cancel: AtomicBool::new(false),
             paused: AtomicBool::new(false),
@@ -60,6 +111,9 @@ impl Scan {
             pending: AtomicUsize::new(1),
             alive: AtomicUsize::new(n),
             errors: AtomicU64::new(0),
+            root_denied: AtomicBool::new(false),
+            phases: Mutex::new(Phases::default()),
+            threads: n,
             fs_dedupe: fs == "NTFS" || fs == "ReFS",
             cluster,
             tasks: task_tx,
@@ -85,6 +139,21 @@ impl Scan {
     pub fn errors(&self) -> u64 {
         self.shared.errors.load(Relaxed)
     }
+
+    /// La racine du scan est illisible (aucun contenu, pas une simple erreur partielle).
+    pub fn root_denied(&self) -> bool {
+        self.shared.root_denied.load(Relaxed)
+    }
+
+    /// Nombre de workers lancés.
+    pub fn threads(&self) -> usize {
+        self.shared.threads
+    }
+
+    /// Phases cumulées des workers terminés (toutes après `Msg::Done`).
+    pub fn phases(&self) -> Phases {
+        *self.shared.phases.lock().unwrap()
+    }
 }
 
 impl Drop for Scan {
@@ -93,7 +162,8 @@ impl Drop for Scan {
     }
 }
 
-fn worker(sh: &Shared, tasks: &Receiver<(u32, PathBuf)>) {
+fn worker(sh: &Shared, tasks: &Receiver<Task>) {
+    let mut ph = Phases::default();
     loop {
         if sh.cancel.load(Relaxed) {
             break;
@@ -103,14 +173,22 @@ fn worker(sh: &Shared, tasks: &Receiver<(u32, PathBuf)>) {
             continue;
         }
         match tasks.recv_timeout(Duration::from_millis(5)) {
-            Ok((id, path)) => {
-                scan_dir(sh, id, path);
-                sh.pending.fetch_sub(1, Relaxed);
+            Ok(task) => {
+                // P4 : le worker enchaîne sur le sous-dossier qu'il a gardé (parcours en profondeur).
+                let mut next = Some(task);
+                while let Some((id, path)) = next.take() {
+                    next = scan_dir(sh, id, path, &mut ph);
+                    sh.pending.fetch_sub(1, Relaxed);
+                    if next.is_some() && (sh.cancel.load(Relaxed) || sh.paused.load(Relaxed)) {
+                        sh.tasks.send(next.take().unwrap()).ok(); // toujours compté dans `pending`
+                    }
+                }
             }
             Err(_) if sh.pending.load(Relaxed) == 0 => break,
             Err(_) => {}
         }
     }
+    *sh.phases.lock().unwrap() += ph;
     if sh.alive.fetch_sub(1, Relaxed) == 1 {
         sh.results.send(Msg::Done).ok();
     }
@@ -210,10 +288,13 @@ fn scan_dir_std(path: &std::path::Path, cluster: u64, errors: &mut u64) -> Optio
     Some(entries)
 }
 
-fn scan_dir(sh: &Shared, id: u32, path: PathBuf) {
+/// Lit un dossier, envoie son lot puis met ses sous-dossiers en file, sauf le dernier, renvoyé
+/// pour être traité par le même worker (déjà compté dans `pending`).
+fn scan_dir(sh: &Shared, id: u32, path: PathBuf, ph: &mut Phases) -> Option<Task> {
     let mut errors = 0;
+    ph.dirs_read += 1;
     #[cfg(windows)]
-    let entries = match win::read_dir(&path, sh.cluster, sh.fs_dedupe, &mut errors) {
+    let entries = match win::read_dir(&path, sh.cluster, sh.fs_dedupe, &mut errors, ph) {
         Ok(v) => Some(v),
         Err(win::Fail::Open) => None,
         Err(win::Fail::Unsupported) => scan_dir_std(&path, sh.cluster, &mut errors),
@@ -221,25 +302,32 @@ fn scan_dir(sh: &Shared, id: u32, path: PathBuf) {
     #[cfg(not(windows))]
     let entries = scan_dir_std(&path, sh.cluster, &mut errors);
     errors += entries.is_none() as u64; // dossier illisible
+    if id == 0 && entries.is_none() {
+        sh.root_denied.store(true, Relaxed);
+    }
     if errors > 0 {
         sh.errors.fetch_add(errors, Relaxed);
     }
-    let Some(entries) = entries else { return };
+    let entries = entries?;
     if entries.is_empty() {
-        return;
+        return None;
     }
+    let t = Instant::now();
     let first = sh.next_id.fetch_add(entries.len() as u32, Relaxed);
-    let subdirs: Vec<(u32, PathBuf)> = entries
+    let mut subdirs: Vec<Task> = entries
         .iter()
         .enumerate()
         .filter(|(_, e)| e.is_dir)
         .map(|(i, e)| (first + i as u32, path.join(&e.name)))
         .collect();
     sh.pending.fetch_add(subdirs.len(), Relaxed);
-    sh.results.send(Msg::Batch(Batch { parent: id, first, entries })).ok();
-    for t in subdirs {
-        sh.tasks.send(t).ok();
+    sh.results.send(Msg::Batch(Batch { parent: id, first, entries })).ok(); // le parent avant ses enfants
+    let keep = subdirs.pop();
+    for d in subdirs {
+        sh.tasks.send(d).ok();
     }
+    ph.send += ns(t);
+    keep
 }
 
 #[cfg(test)]
@@ -259,6 +347,18 @@ mod tests {
         assert_eq!(on_disk(MIB, 0, 0x20, c), None);
         assert_eq!(on_disk(MIB, 0, 0x40_0420, c), Some(0));
         assert_eq!(on_disk(100, 104, 0x20, 0), Some(104));
+    }
+
+    #[test]
+    fn worker_count_env() {
+        assert_eq!(worker_count(None, 20), 8);
+        assert_eq!(worker_count(None, 6), 6);
+        assert_eq!(worker_count(None, 1), 4);
+        assert_eq!(worker_count(Some("8"), 20), 8);
+        assert_eq!(worker_count(Some("0"), 20), 8);
+        assert_eq!(worker_count(Some("65"), 20), 8);
+        assert_eq!(worker_count(Some("x"), 20), 8);
+        assert_eq!(worker_count(Some("64"), 2), 64);
     }
 
     #[test]
@@ -299,8 +399,16 @@ mod fs_tests {
 
     impl TempDir {
         fn new(name: &str) -> TempDir {
+            TempDir::with("f04", name)
+        }
+
+        fn f05(name: &str) -> TempDir {
+            TempDir::with("f05", name)
+        }
+
+        fn with(card: &str, name: &str) -> TempDir {
             let nanos = std::time::SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-            let p = std::env::temp_dir().join(format!("optisize-f04-{name}-{}-{nanos}", std::process::id()));
+            let p = std::env::temp_dir().join(format!("optisize-{card}-{name}-{}-{nanos}", std::process::id()));
             std::fs::create_dir(&p).unwrap(); // échoue si le dossier existe déjà
             TempDir(p)
         }
@@ -315,7 +423,10 @@ mod fs_tests {
 
     /// Comme `--bench` : scan complet ingéré dans un `Tree`.
     fn scan_tree(dir: &Path) -> Tree {
-        let scan = Scan::start(dir.into());
+        scan_with(Scan::start(dir.into()), dir).0
+    }
+
+    fn scan_with(scan: Scan, dir: &Path) -> (Tree, Scan) {
         let mut tree = Tree::new(dir.into());
         while let Ok(m) = scan.rx.recv() {
             match m {
@@ -323,7 +434,7 @@ mod fs_tests {
                 Msg::Done => break,
             }
         }
-        tree
+        (tree, scan)
     }
 
     fn find(t: &Tree, name: &str) -> Option<usize> {
@@ -510,5 +621,98 @@ mod fs_tests {
         walk(&d.0, &mut want);
         let t = scan_tree(&d.0);
         assert_eq!((t.nodes[0].files, t.nodes[0].dirs, t.nodes[0].size), want);
+    }
+
+    /// Comptes (fichiers, dossiers, taille logique) d'un parcours `std::fs`.
+    fn std_counts(p: &Path) -> (u32, u32, u64) {
+        fn walk(p: &Path, acc: &mut (u32, u32, u64)) {
+            for e in std::fs::read_dir(p).unwrap().flatten() {
+                let m = e.metadata().unwrap();
+                if m.is_dir() {
+                    acc.1 += 1;
+                    walk(&e.path(), acc);
+                } else {
+                    acc.0 += 1;
+                    acc.2 += m.len();
+                }
+            }
+        }
+        let mut acc = (0, 0, 0);
+        walk(p, &mut acc);
+        acc
+    }
+
+    /// Refus de lister à « Tout le monde » posé sur un dossier créé par le test ; `Drop` retire
+    /// le refus puis le dossier, dans cet ordre.
+    struct Denied(TempDir);
+
+    impl Drop for Denied {
+        fn drop(&mut self) {
+            Command::new("icacls").arg(&self.0 .0).args(["/remove:d", "*S-1-1-0"]).output().ok();
+        }
+    }
+
+    #[test]
+    fn scan_reports_root_denied() {
+        let d = TempDir::f05("denied");
+        std::fs::write(d.0.join("f.txt"), [1u8; 10]).unwrap();
+        let ok = Command::new("icacls").arg(&d.0).args(["/deny", "*S-1-1-0:(RD)"]).output().is_ok_and(|o| o.status.success());
+        let d = Denied(d);
+        if !ok {
+            eprintln!("ignoré : icacls /deny refusé");
+            return;
+        }
+        let (t, s) = scan_with(Scan::start(d.0 .0.clone()), &d.0 .0);
+        assert!(s.root_denied());
+        assert!(s.errors() >= 1);
+        assert_eq!((t.nodes[0].files, t.nodes[0].dirs, t.nodes[0].child_count), (0, 0, 0));
+    }
+
+    #[test]
+    fn scan_root_ok_not_denied() {
+        let d = TempDir::f05("readable");
+        std::fs::write(d.0.join("f.txt"), [1u8; 10]).unwrap();
+        let (t, s) = scan_with(Scan::start(d.0.clone()), &d.0);
+        assert!(!s.root_denied());
+        assert_eq!(s.errors(), 0);
+        assert_eq!(t.nodes[0].files, 1);
+    }
+
+    #[test]
+    fn phases_are_counted() {
+        let d = TempDir::f05("phases");
+        for i in 0..20 {
+            let sub = d.0.join(format!("d{i}"));
+            std::fs::create_dir(&sub).unwrap();
+            for j in 0..5 {
+                std::fs::write(sub.join(format!("f{j}")), [0u8; 100]).unwrap();
+            }
+        }
+        let (_, s) = scan_with(Scan::start(d.0.clone()), &d.0);
+        let p = s.phases();
+        assert_eq!(p.dirs_read, 21);
+        assert!(p.open + p.query > 0);
+        assert_eq!(p.wof_calls, 0);
+    }
+
+    #[test]
+    fn scan_terminates_many_threads_few_dirs() {
+        let d = TempDir::f05("threads");
+        for a in 0..3 {
+            for b in 0..3 {
+                let sub = d.0.join(format!("a{a}")).join(format!("b{b}")).join("c");
+                std::fs::create_dir_all(&sub).unwrap();
+                std::fs::write(sub.join("f.dat"), vec![0u8; a * 1000 + b * 10]).unwrap();
+                std::fs::write(d.0.join(format!("a{a}")).join(format!("g{b}")), [0u8; 7]).unwrap();
+            }
+        }
+        let want = std_counts(&d.0);
+        for n in [1, 2, 48] {
+            let t0 = Instant::now();
+            let (t, s) = scan_with(Scan::start_with(d.0.clone(), n), &d.0);
+            assert!(t0.elapsed() < Duration::from_secs(5), "{n} workers : trop long");
+            assert_eq!(s.threads(), n);
+            assert_eq!((t.nodes[0].files, t.nodes[0].dirs, t.nodes[0].size), want, "{n} workers");
+        }
     }
 }

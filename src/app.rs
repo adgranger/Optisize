@@ -173,6 +173,9 @@ impl App {
             }
         }
         if done {
+            if scan.root_denied() {
+                self.toast(&format!("Accès refusé : {}", self.tree.root_path.display()));
+            }
             self.scan = None;
             self.tree.end_scan();
             self.state = ScanState::Done;

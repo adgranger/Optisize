@@ -1,39 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod bench;
 mod fmt;
 mod scan;
 mod treemap_layout;
 mod ui;
 
 use eframe::egui;
-
-/// `optisize --bench <dossier>` : scan sans interface, affiche le débit (console).
-fn bench(path: &str) {
-    let t0 = std::time::Instant::now();
-    let scan = scan::Scan::start(path.into());
-    let mut tree = scan::tree::Tree::new(path.into());
-    while let Ok(m) = scan.rx.recv() {
-        match m {
-            scan::Msg::Batch(b) => tree.ingest(b.parent, b.first, &b.entries),
-            scan::Msg::Done => break,
-        }
-    }
-    let secs = t0.elapsed().as_secs_f64();
-    let mem = tree.mem_bytes(); // pic : ensemble des liens physiques compris
-    tree.end_scan();
-    let root = &tree.nodes[0];
-    println!(
-        "{} fichiers, {} dossiers, {} logique, {} sur disque en {secs:.2} s => {:.0} fichiers/s ({:.0} entrées/s), arbre {}",
-        fmt::thousands(root.files as u64),
-        fmt::thousands(root.dirs as u64),
-        fmt::size(root.size),
-        fmt::size(root.alloc),
-        root.files as f64 / secs,
-        (root.files + root.dirs) as f64 / secs,
-        fmt::size(mem as u64),
-    );
-}
 
 fn main() -> eframe::Result {
     #[cfg(windows)]
@@ -42,8 +16,7 @@ fn main() -> eframe::Result {
     if args.first().is_some_and(|a| a == "--bench") {
         #[cfg(windows)]
         attach_console();
-        bench(args.get(1).map_or(".", |s| s.as_str()));
-        return Ok(());
+        std::process::exit(bench::run(&args[1..]));
     }
     let opts = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
