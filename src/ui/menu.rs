@@ -52,7 +52,6 @@ pub fn show(ui: &mut Ui, f: Flags) -> Option<Action> {
             for v in View::ALL {
                 view_item(ui, o, f, v);
             }
-            item(ui, o, "100 plus gros fichiers", "F9", None, true);
             item(ui, o, "Fichiers les plus anciens", "", None, true);
             item(ui, o, "Doublons", "", None, true);
             ui.separator();

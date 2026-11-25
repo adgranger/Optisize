@@ -4,6 +4,7 @@ pub mod side;
 pub mod status;
 pub mod theme;
 pub mod toolbar;
+pub mod top;
 pub mod tree_view;
 pub mod treemap;
 pub mod types;
@@ -15,6 +16,7 @@ pub enum View {
     Details,
     Map,
     Types,
+    Top,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

@@ -1,6 +1,6 @@
 use crate::scan::tree::{Tree, NONE};
 use crate::scan::{Msg, Scan};
-use crate::ui::{self, drives, side, status, theme::*, toolbar, tree_view::TreeView, treemap::TreemapView, Action, Flags, ScanState, View};
+use crate::ui::{self, drives, side, status, theme::*, toolbar, tree_view::TreeView, top::TopView, treemap::TreemapView, Action, Flags, ScanState, View};
 use crossbeam_channel::{Receiver, TryRecvError};
 use eframe::egui::{self, Frame, Margin, Panel};
 use std::path::PathBuf;
@@ -18,6 +18,7 @@ pub struct App {
     selected: Option<u32>,
     tv: TreeView,
     tm: TreemapView,
+    top: TopView,
     drives: drives::Shared,
     picker: Option<Receiver<Option<PathBuf>>>,
     cleanup: Vec<(String, u64)>,
@@ -84,6 +85,7 @@ impl App {
             selected: None,
             tv: TreeView::new(),
             tm: TreemapView::new(),
+            top: TopView::new(),
             drives,
             picker: None,
             cleanup: Vec::new(),
@@ -126,6 +128,7 @@ impl App {
         self.selected = None;
         self.tv.reset();
         self.tm.reset();
+        self.top.reset(); // F28 (ouvrir un scan) : tout autre remplacement de l'arbre doit aussi l'appeler
         self.scan = Some(Scan::start(root));
         self.state = ScanState::Scanning;
         self.elapsed = Duration::ZERO;
@@ -406,6 +409,7 @@ impl eframe::App for App {
             });
 
         let mut picked = None;
+        let mut revealed = None;
         egui::CentralPanel::default().frame(Frame::new().fill(BG)).show(ui, |ui| {
             Frame::new().inner_margin(Margin::symmetric(16, 12)).show(ui, |ui| {
                 action = ui::views::tabs(ui, self.view).or(action);
@@ -422,6 +426,11 @@ impl eframe::App for App {
                         clicked = self.tm.show(ui, &self.tree, self.selected, scanning, h).or(clicked);
                     });
                 }
+                View::Top => {
+                    Frame::new().inner_margin(Margin { left: 16, right: 16, top: 0, bottom: 12 }).show(ui, |ui| {
+                        revealed = self.top.show(ui, &self.tree, &mut self.selected, scanning, now);
+                    });
+                }
                 View::Types => {
                     Frame::new().inner_margin(Margin::symmetric(16, 0)).show(ui, |ui| ui::types::show(ui, &self.tree, true));
                 }
@@ -431,6 +440,11 @@ impl eframe::App for App {
         if let Some(id) = clicked {
             self.selected = Some(id);
             self.tv.reveal(&self.tree, id);
+        }
+        if let Some(id) = revealed {
+            self.selected = Some(id);
+            self.tv.reveal(&self.tree, id);
+            action = Some(Action::SetView(View::Details));
         }
         if let Some(root) = picked {
             self.open(&root);

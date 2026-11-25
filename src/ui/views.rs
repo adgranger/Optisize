@@ -2,14 +2,15 @@ use super::{Action, View};
 use eframe::egui::{Key, Ui};
 
 impl View {
-    /// Ordre des onglets et du menu. F09/F10 ajouteront leurs variantes ici.
-    pub const ALL: [View; 3] = [View::Details, View::Map, View::Types];
+    /// Ordre des onglets et du menu. F10 ajoutera sa variante ici.
+    pub const ALL: [View; 4] = [View::Details, View::Map, View::Types, View::Top];
 
     pub fn label(self) -> &'static str {
         match self {
             View::Details => "Détails (arborescence)",
             View::Map => "Carte (treemap)",
             View::Types => "Types de fichiers",
+            View::Top => "100 plus gros fichiers",
         }
     }
 
@@ -18,6 +19,7 @@ impl View {
             View::Details => "Détails",
             View::Map => "Carte",
             View::Types => "Types",
+            View::Top => "Gros fichiers",
         }
     }
 
@@ -26,6 +28,7 @@ impl View {
             View::Details => Key::F6,
             View::Map => Key::F7,
             View::Types => Key::F8,
+            View::Top => Key::F9,
         }
     }
 
@@ -34,6 +37,7 @@ impl View {
             View::Details => "F6",
             View::Map => "F7",
             View::Types => "F8",
+            View::Top => "F9",
         }
     }
 
@@ -74,15 +78,16 @@ mod tests {
     use eframe::egui;
 
     #[test]
-    fn view_for_key_maps_f6_f7_f8() {
+    fn view_for_key_maps_f6_to_f9() {
         assert_eq!(View::for_key(egui::Key::F6), Some(View::Details));
         assert_eq!(View::for_key(egui::Key::F7), Some(View::Map));
         assert_eq!(View::for_key(egui::Key::F8), Some(View::Types));
+        assert_eq!(View::for_key(egui::Key::F9), Some(View::Top));
     }
 
     #[test]
     fn view_for_key_ignores_other_keys() {
-        for k in [egui::Key::F5, egui::Key::F9, egui::Key::F1, egui::Key::A] {
+        for k in [egui::Key::F5, egui::Key::F10, egui::Key::F1, egui::Key::A] {
             assert_eq!(View::for_key(k), None);
         }
     }
@@ -104,5 +109,6 @@ mod tests {
         assert!(View::Details.side_treemap() && View::Details.side_types());
         assert!(!View::Map.side_treemap() && View::Map.side_types());
         assert!(View::Types.side_treemap() && !View::Types.side_types());
+        assert!(View::Top.side_treemap() && View::Top.side_types());
     }
 }
