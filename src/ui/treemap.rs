@@ -18,11 +18,11 @@ impl Source for TreeSrc<'_> {
         self.0.nodes[id as usize].is_dir
     }
     fn size(&self, id: u32) -> u64 {
-        self.0.nodes[id as usize].size
+        self.0.size(id)
     }
     fn children_sorted(&self, id: u32, out: &mut Vec<u32>) {
-        out.extend(self.0.children(id).filter(|&c| self.0.nodes[c as usize].size > 0));
-        out.sort_by_key(|&c| std::cmp::Reverse(self.0.nodes[c as usize].size));
+        out.extend(self.0.children(id).filter(|&c| self.0.size(c) > 0));
+        out.sort_by_key(|&c| std::cmp::Reverse(self.0.size(c)));
     }
 }
 
@@ -56,7 +56,7 @@ impl TreemapView {
         let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::click());
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 8.0, BG);
-        if tree.nodes[0].size == 0 {
+        if tree.size(0) == 0 {
             p.text(rect.center(), Align2::CENTER_CENTER, "Aucune donnée — lancez un scan", egui::FontId::proportional(13.0), MUTED);
             return None;
         }
@@ -88,7 +88,7 @@ impl TreemapView {
                 p.rect_filled(r, 0.0, FRAMES[(c.depth as usize).min(3)]);
                 p.rect_stroke(r, 0.0, Stroke::new(1.0, FRAME_BORDER), StrokeKind::Inside);
                 if r.width() > 50.0 {
-                    label(&p, r, 3.0, &format!("{name} ({})", fmt::size(n.size)), TEXT);
+                    label(&p, r, 3.0, &format!("{name} ({})", fmt::size(tree.size(c.id))), TEXT);
                 }
             } else {
                 let fill = if c.is_dir { FRAMES[3] } else { kind_color(n.kind) };
@@ -96,7 +96,7 @@ impl TreemapView {
                 p.rect_stroke(r, 0.0, Stroke::new(1.0, PANEL2), StrokeKind::Inside);
                 if label_ok {
                     let fg = if c.is_dir { TEXT } else { Color32::from_rgb(0x10, 0x14, 0x1a) };
-                    label(&p, r, 3.0, &format!("{name} ({})", fmt::size(n.size)), fg);
+                    label(&p, r, 3.0, &format!("{name} ({})", fmt::size(tree.size(c.id))), fg);
                 }
             }
         }
@@ -110,7 +110,13 @@ impl TreemapView {
             let c = self.cells[i];
             p.rect_stroke(to_rect(c.rect), 0.0, Stroke::new(1.5, Color32::WHITE), StrokeKind::Inside);
             let n = &tree.nodes[c.id as usize];
-            let tip = format!("{}\n{} · {} fichiers", tree.path(c.id).display(), fmt::size(n.size), fmt::thousands(n.files as u64));
+            let tip = format!(
+                "{}\n{} sur disque · {} logique · {} fichiers",
+                tree.path(c.id).display(),
+                fmt::size(n.alloc),
+                fmt::size(n.size),
+                fmt::thousands(n.files as u64)
+            );
             resp.clone().on_hover_text_at_pointer(tip);
             if resp.clicked() {
                 // Un clic sur un fichier sélectionne son dossier.
@@ -121,7 +127,7 @@ impl TreemapView {
     }
 
     fn types(&self, ui: &mut Ui, tree: &Tree, rect: Rect) -> Option<u32> {
-        let mut items: Vec<_> = KINDS.iter().map(|&k| (k, tree.type_sizes[k as usize])).filter(|t| t.1 > 0).collect();
+        let mut items: Vec<_> = KINDS.iter().map(|&k| (k, tree.type_size(k))).filter(|t| t.1 > 0).collect();
         items.sort_by_key(|t| std::cmp::Reverse(t.1));
         let w: Vec<u64> = items.iter().map(|t| t.1).collect();
         let p = ui.painter_at(rect);

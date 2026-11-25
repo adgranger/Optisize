@@ -23,6 +23,8 @@ pub struct App {
     cleanup: Vec<(String, u64)>,
     cleanup_total: u64,
     toast: Option<(String, Instant)>,
+    /// Mode d'affichage des tailles (sur disque par défaut), réappliqué à chaque nouvel arbre.
+    on_disk: bool,
     ctx: egui::Context,
 }
 
@@ -85,6 +87,7 @@ impl App {
             cleanup: Vec::new(),
             cleanup_total: 0,
             toast: None,
+            on_disk: true,
             ctx: cc.egui_ctx.clone(),
         };
         if start.is_some() {
@@ -116,6 +119,7 @@ impl App {
         let root = PathBuf::from(&self.path);
         self.scan = None; // Drop => annule l'ancien scan
         self.tree = Tree::new(root.clone());
+        self.tree.set_on_disk(self.on_disk);
         self.selected = None;
         self.tv.reset();
         self.tm.reset();
@@ -170,6 +174,7 @@ impl App {
         }
         if done {
             self.scan = None;
+            self.tree.end_scan();
             self.state = ScanState::Done;
             drives::enumerate_async(self.drives.clone(), ctx.clone());
             self.compute_cleanup();
@@ -196,9 +201,9 @@ impl App {
             }
             if inside[n.parent as usize] {
                 inside[id] = true;
-            } else if n.is_dir && n.size > 0 && NAMES.iter().any(|x| t.name(id as u32).eq_ignore_ascii_case(x)) {
+            } else if n.is_dir && n.alloc > 0 && NAMES.iter().any(|x| t.name(id as u32).eq_ignore_ascii_case(x)) {
                 inside[id] = true;
-                found.push((id as u32, n.size));
+                found.push((id as u32, n.alloc)); // espace récupérable : toujours sur disque
             }
         }
         self.cleanup_total = found.iter().map(|f| f.1).sum();
@@ -250,6 +255,7 @@ impl App {
             }
             Action::Stop => {
                 if self.scan.take().is_some() {
+                    self.tree.end_scan();
                     self.state = ScanState::Stopped;
                     drives::enumerate_async(self.drives.clone(), ctx.clone());
                     self.compute_cleanup();
@@ -281,6 +287,11 @@ impl App {
             }
             Action::ExpandAll => self.tv.expand_levels(&self.tree, 3),
             Action::CollapseAll => self.tv.collapse_all(),
+            Action::ToggleOnDisk => {
+                self.on_disk = !self.on_disk;
+                self.tree.set_on_disk(self.on_disk);
+                self.toast(if self.on_disk { "Tailles sur disque (espace alloué)" } else { "Tailles logiques" });
+            }
         }
     }
 
@@ -294,6 +305,8 @@ impl App {
                 Some(Action::Stop)
             } else if i.modifiers.command && i.key_pressed(egui::Key::O) {
                 Some(Action::PickFolder)
+            } else if i.modifiers.command && i.key_pressed(egui::Key::T) {
+                Some(Action::ToggleOnDisk)
             } else if i.modifiers.command && i.key_pressed(egui::Key::R) && !busy {
                 Some(Action::Refresh)
             } else if i.modifiers.alt && i.key_pressed(egui::Key::ArrowUp) && !busy {
@@ -316,7 +329,7 @@ impl eframe::App for App {
         if self.picker.is_some() {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
-        let flags = Flags { state: self.state, has_selection: self.selected.is_some() };
+        let flags = Flags { state: self.state, has_selection: self.selected.is_some(), on_disk: self.on_disk };
         let mut action = self.shortcuts(&ctx);
         let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
         let scanning = self.state == ScanState::Scanning;

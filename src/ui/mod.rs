@@ -33,12 +33,14 @@ pub enum Action {
     CopyPath,
     ExpandAll,
     CollapseAll,
+    ToggleOnDisk,
 }
 
 #[derive(Clone, Copy)]
 pub struct Flags {
     pub state: ScanState,
     pub has_selection: bool,
+    pub on_disk: bool,
 }
 
 impl Flags {

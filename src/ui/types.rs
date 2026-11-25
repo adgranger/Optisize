@@ -5,7 +5,7 @@ use eframe::egui::{self, Align2, Rect, Ui};
 
 pub fn show(ui: &mut Ui, tree: &Tree) {
     ui.label(egui::RichText::new("Par type de fichier").strong());
-    let mut items: Vec<_> = KINDS.iter().map(|&k| (k, tree.type_sizes[k as usize])).filter(|t| t.1 > 0).collect();
+    let mut items: Vec<_> = KINDS.iter().map(|&k| (k, tree.type_size(k))).filter(|t| t.1 > 0).collect();
     items.sort_by_key(|t| std::cmp::Reverse(t.1));
     let max = items.first().map_or(1, |t| t.1) as f32;
     for (k, s) in items.iter().take(8) {

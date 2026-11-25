@@ -50,6 +50,8 @@ pub fn show(ui: &mut Ui, f: Flags) -> Option<Action> {
             item(ui, o, "Tout développer (3 niveaux)", "Ctrl+Maj+Droite", Some(Action::ExpandAll), true);
             item(ui, o, "Tout réduire", "Ctrl+Maj+Gauche", Some(Action::CollapseAll), true);
             ui.separator();
+            let t = if f.on_disk { "Afficher la taille logique" } else { "Afficher la taille sur disque" };
+            item(ui, o, t, "Ctrl+T", Some(Action::ToggleOnDisk), true);
             item(ui, o, "Unités : Go / Gio", "", None, true);
             item(ui, o, "Thème clair / sombre", "", None, true);
         });

@@ -17,8 +17,7 @@ cargo test; cargo clippy --all-targets
 
 ## État
 
-Fonctionnel : scan, arbre, treemap, types, lecteurs (ré-énumérés à la fin de chaque scan), filtre par nom, Ouvrir dans l'Explorateur, Copier le chemin, « Choisir un dossier… » (Ctrl+O, dialogue modal) et clic sur une puce de lecteur (annulent un scan en cours) via une entrée unique `App::open`, dates de la colonne Modifié en heure locale (heure d'été comprise), tailles et compteurs en JetBrains Mono embarquée.
-Limites : la toute première ouverture du dialogue après le lancement peut s'ouvrir sur « Ce PC » au lieu du dossier courant ; clé USB, lecteur vide et partage UNC non vérifiés (pas de matériel) ; la validation d'un chemin réseau injoignable est bloquante quelques secondes.
+Fonctionnel : scan, arbre, treemap, types, lecteurs (ré-énumérés à la fin de chaque scan), filtre par nom, Ouvrir dans l'Explorateur, Copier le chemin, « Choisir un dossier… » (Ctrl+O, dialogue modal) et clic sur une puce de lecteur (annulent un scan en cours) via une entrée unique `App::open`, dates de la colonne Modifié en heure locale (heure d'été comprise), tailles et compteurs en JetBrains Mono embarquée, taille sur disque par défaut (clusters, fichiers creux, compressés NTFS et WOF, liens physiques comptés une fois), bascule taille logique (Ctrl+T, menu Affichage).
+Limites : la toute première ouverture du dialogue après le lancement peut s'ouvrir sur « Ce PC » au lieu du dossier courant ; clé USB, lecteur vide et partage UNC non vérifiés (pas de matériel) ; la validation d'un chemin réseau injoignable est bloquante quelques secondes ; tailles sur disque FAT32/exFAT non vérifiées sur matériel (pas de clé USB) ; un lien physique est attribué au premier nom rencontré pendant le scan (le dossier qui le porte peut changer d'un scan à l'autre, le total non).
 Maquettes (rien n'est supprimé sur le disque) : Nettoyer / Examiner et nettoyer, Corbeille, exports, scans enregistrés, et les entrées de menu grisées.
-TODO : taille allouée (clusters) au lieu de la taille logique.
 Police : JetBrains Mono (SIL OFL 1.1, `assets/fonts/JetBrainsMono-OFL.txt`).

@@ -20,15 +20,18 @@ fn bench(path: &str) {
         }
     }
     let secs = t0.elapsed().as_secs_f64();
+    let mem = tree.mem_bytes(); // pic : ensemble des liens physiques compris
+    tree.end_scan();
     let root = &tree.nodes[0];
     println!(
-        "{} fichiers, {} dossiers, {} en {secs:.2} s => {:.0} fichiers/s ({:.0} entrées/s), arbre {}",
+        "{} fichiers, {} dossiers, {} logique, {} sur disque en {secs:.2} s => {:.0} fichiers/s ({:.0} entrées/s), arbre {}",
         fmt::thousands(root.files as u64),
         fmt::thousands(root.dirs as u64),
         fmt::size(root.size),
+        fmt::size(root.alloc),
         root.files as f64 / secs,
         (root.files + root.dirs) as f64 / secs,
-        fmt::size(tree.mem_bytes() as u64),
+        fmt::size(mem as u64),
     );
 }
 

@@ -92,7 +92,7 @@ impl TreeView {
         let key = |id: &u32| -> u64 {
             let n = &tree.nodes[*id as usize];
             match self.sort {
-                Col::Size | Col::Pct => n.size,
+                Col::Size | Col::Pct => tree.size(*id),
                 Col::Files => n.files as u64,
                 Col::Date => n.mtime as u64,
                 Col::Name => 0,
@@ -118,7 +118,7 @@ impl TreeView {
                     n.parent != NONE && tree.name(id).as_bytes().windows(needle.len()).any(|w| w.eq_ignore_ascii_case(needle))
                 })
                 .collect();
-            hits.sort_by_key(|&id| std::cmp::Reverse(tree.nodes[id as usize].size));
+            hits.sort_by_key(|&id| std::cmp::Reverse(tree.size(id)));
             hits.truncate(5000);
             self.rows.extend(hits.into_iter().map(|id| (id, 0)));
         } else {
@@ -147,7 +147,7 @@ impl TreeView {
         if self.dirty || stale || self.built_filter != filter {
             self.rebuild(tree, filter);
         }
-        self.header(ui);
+        self.header(ui, tree.on_disk());
         let mut toggle = None;
         let mut pick = None;
         let rows_n = self.rows.len();
@@ -197,7 +197,7 @@ impl TreeView {
                 }
             }
         }
-        let root_size = tree.nodes[0].size.max(1);
+        let root_size = tree.size(0).max(1);
         let sel = *selected;
         let rows = &self.rows;
         let expanded = &self.expanded;
@@ -242,15 +242,15 @@ impl TreeView {
                     egui::FontId::proportional(13.0),
                     TEXT,
                 );
-                let parent_size = if n.parent == NONE { root_size } else { tree.nodes[n.parent as usize].size.max(1) };
-                let frac = (n.size as f64 / parent_size as f64).clamp(0.0, 1.0);
+                let parent_size = if n.parent == NONE { root_size } else { tree.size(n.parent).max(1) };
+                let frac = (tree.size(id) as f64 / parent_size as f64).clamp(0.0, 1.0);
                 let bar = Rect::from_min_size(Pos2::new(layout.size_x, cy - 4.0), egui::vec2(layout.size_w - 64.0 - GAP, 8.0));
                 if bar.width() > 12.0 {
                     p.rect_filled(bar, 2.0, TRACK);
                     p.rect_filled(Rect::from_min_size(bar.min, egui::vec2(bar.width() * frac as f32, 8.0)), 2.0, if n.is_dir { ACCENT } else { color });
                 }
                 let m = mono(12.0);
-                p.text(Pos2::new(layout.size_x + layout.size_w, cy), Align2::RIGHT_CENTER, fmt::size(n.size), m.clone(), TEXT);
+                p.text(Pos2::new(layout.size_x + layout.size_w, cy), Align2::RIGHT_CENTER, fmt::size(tree.size(id)), m.clone(), TEXT);
                 p.text(Pos2::new(layout.pct_r, cy), Align2::RIGHT_CENTER, fmt::percent(frac * 100.0), m.clone(), MUTED);
                 let files = if n.is_dir { fmt::thousands(n.files as u64) } else { String::new() };
                 p.text(Pos2::new(layout.files_r, cy), Align2::RIGHT_CENTER, files, m, MUTED);
@@ -288,7 +288,7 @@ impl TreeView {
         }
     }
 
-    fn header(&mut self, ui: &mut Ui) {
+    fn header(&mut self, ui: &mut Ui, on_disk: bool) {
         let w = ui.available_width();
         let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 30.0), Sense::hover());
         let p = ui.painter_at(rect);
@@ -297,7 +297,7 @@ impl TreeView {
         let l = Layout::new(rect);
         let cols = [
             (Col::Name, "Nom", rect.left() + PAD, Align2::LEFT_CENTER, 120.0),
-            (Col::Size, "Taille", l.size_x, Align2::LEFT_CENTER, l.size_w),
+            (Col::Size, if on_disk { "Sur disque" } else { "Taille" }, l.size_x, Align2::LEFT_CENTER, l.size_w),
             (Col::Pct, "%", l.pct_r, Align2::RIGHT_CENTER, W_PCT),
             (Col::Files, "Fichiers", l.files_r, Align2::RIGHT_CENTER, W_FILES),
             (Col::Date, "Modifié", l.date_r, Align2::RIGHT_CENTER, W_DATE),
@@ -307,7 +307,14 @@ impl TreeView {
                 Align2::LEFT_CENTER => Rect::from_min_size(Pos2::new(x, rect.top()), egui::vec2(cw, rect.height())),
                 _ => Rect::from_min_size(Pos2::new(x - cw, rect.top()), egui::vec2(cw, rect.height())),
             };
-            let resp = ui.interact(cr, ui.make_persistent_id(label), Sense::click());
+            let mut resp = ui.interact(cr, ui.make_persistent_id(col as u8), Sense::click());
+            if col == Col::Size {
+                resp = resp.on_hover_text(if on_disk {
+                    "Espace réellement occupé sur le disque (clusters ; liens physiques comptés une fois). Ctrl+T : taille logique"
+                } else {
+                    "Taille logique des fichiers. Ctrl+T : taille sur disque"
+                });
+            }
             let arrow = if self.sort == col { if self.desc { " (desc.)" } else { " (asc.)" } } else { "" };
             let color = if self.sort == col || resp.hovered() { TEXT } else { MUTED };
             p.text(Pos2::new(x, rect.center().y), align, format!("{label}{arrow}"), egui::FontId::proportional(12.0), color);
