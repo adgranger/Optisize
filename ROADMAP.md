@@ -33,7 +33,7 @@ Dépend de = identifiants qui doivent être `done` avant de commencer.
 | F01 | Tester et corriger « Choisir un dossier… » (Ctrl+O) et le clic sur une puce de lecteur | — | sonnet | `docs/cards/F01-choisir-dossier-lecteur.md` | done |
 | F02 | Dates affichées en heure locale (pas en UTC) | — | sonnet | `docs/cards/F02-dates-heure-locale.md` | done |
 | F03 | Embarquer la police JetBrains Mono pour les tailles | — | sonnet | `docs/cards/F03-police-jetbrains-mono.md` | done |
-| F04 | Taille allouée (clusters) en plus de la taille logique, avec bascule ; liens physiques, fichiers creux, compressés | — | opus | — | todo |
+| F04 | Taille allouée (clusters) en plus de la taille logique, avec bascule ; liens physiques, fichiers creux, compressés | — | opus | `docs/cards/F04-taille-sur-disque.md` | ready |
 | F05 | Benchmark reproductible contre TreeSize et WizTree, profilage et optimisation du scan | — | opus | — | todo |
 | F06 | CI GitHub Actions (build, clippy, test) | — | sonnet | — | todo |
 
