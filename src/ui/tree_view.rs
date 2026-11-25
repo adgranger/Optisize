@@ -244,11 +244,13 @@ impl TreeView {
                 );
                 let parent_size = if n.parent == NONE { root_size } else { tree.nodes[n.parent as usize].size.max(1) };
                 let frac = (n.size as f64 / parent_size as f64).clamp(0.0, 1.0);
-                let bar = Rect::from_min_size(Pos2::new(layout.size_x, cy - 4.0), egui::vec2(W_SIZE - 64.0 - GAP, 8.0));
-                p.rect_filled(bar, 2.0, TRACK);
-                p.rect_filled(Rect::from_min_size(bar.min, egui::vec2(bar.width() * frac as f32, 8.0)), 2.0, if n.is_dir { ACCENT } else { color });
+                let bar = Rect::from_min_size(Pos2::new(layout.size_x, cy - 4.0), egui::vec2(layout.size_w - 64.0 - GAP, 8.0));
+                if bar.width() > 12.0 {
+                    p.rect_filled(bar, 2.0, TRACK);
+                    p.rect_filled(Rect::from_min_size(bar.min, egui::vec2(bar.width() * frac as f32, 8.0)), 2.0, if n.is_dir { ACCENT } else { color });
+                }
                 let m = mono(12.0);
-                p.text(Pos2::new(layout.size_x + W_SIZE, cy), Align2::RIGHT_CENTER, fmt::size(n.size), m.clone(), TEXT);
+                p.text(Pos2::new(layout.size_x + layout.size_w, cy), Align2::RIGHT_CENTER, fmt::size(n.size), m.clone(), TEXT);
                 p.text(Pos2::new(layout.pct_r, cy), Align2::RIGHT_CENTER, fmt::percent(frac * 100.0), m.clone(), MUTED);
                 let files = if n.is_dir { fmt::thousands(n.files as u64) } else { String::new() };
                 p.text(Pos2::new(layout.files_r, cy), Align2::RIGHT_CENTER, files, m, MUTED);
@@ -294,8 +296,8 @@ impl TreeView {
         p.line_segment([rect.left_bottom(), rect.right_bottom()], Stroke::new(1.0, BORDER));
         let l = Layout::new(rect);
         let cols = [
-            (Col::Name, "Nom", rect.left() + PAD, Align2::LEFT_CENTER, 200.0),
-            (Col::Size, "Taille", l.size_x, Align2::LEFT_CENTER, W_SIZE),
+            (Col::Name, "Nom", rect.left() + PAD, Align2::LEFT_CENTER, 120.0),
+            (Col::Size, "Taille", l.size_x, Align2::LEFT_CENTER, l.size_w),
             (Col::Pct, "%", l.pct_r, Align2::RIGHT_CENTER, W_PCT),
             (Col::Files, "Fichiers", l.files_r, Align2::RIGHT_CENTER, W_FILES),
             (Col::Date, "Modifié", l.date_r, Align2::RIGHT_CENTER, W_DATE),
@@ -328,6 +330,7 @@ struct Layout {
     files_r: f32,
     pct_r: f32,
     size_x: f32,
+    size_w: f32,
 }
 
 impl Layout {
@@ -336,7 +339,8 @@ impl Layout {
         let files_r = date_r - W_DATE - GAP;
         let pct_r = files_r - W_FILES - GAP;
         // Garde une largeur minimale à la colonne Nom : le reste est rogné par le clip.
-        let size_x = (pct_r - W_PCT - GAP - W_SIZE).max(rect.left() + PAD + 200.0);
-        Layout { date_r, files_r, pct_r, size_x }
+        // La colonne Taille rétrécit (la barre disparaît) plutôt que de chevaucher les autres.
+        let size_w = (pct_r - W_PCT - GAP - (rect.left() + PAD + 120.0)).clamp(70.0, W_SIZE);
+        Layout { date_r, files_r, pct_r, size_x: pct_r - W_PCT - GAP - size_w, size_w }
     }
 }
