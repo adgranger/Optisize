@@ -304,6 +304,9 @@ impl App {
             Action::ExpandAll => self.tv.expand_levels(&self.tree, 3),
             Action::CollapseAll => self.tv.collapse_all(),
             Action::SetView(v) => self.set_view(v),
+            Action::ZoomOut => {
+                self.tm.zoom_out(&self.tree);
+            }
             Action::ToggleOnDisk => {
                 self.on_disk = !self.on_disk;
                 self.tree.set_on_disk(self.on_disk);
@@ -318,6 +321,8 @@ impl App {
             let busy = matches!(self.state, ScanState::Scanning | ScanState::Paused);
             if let Some(v) = View::ALL.into_iter().find(|v| i.modifiers.is_none() && i.key_pressed(v.key())) {
                 Some(Action::SetView(v))
+            } else if i.key_pressed(egui::Key::Backspace) && i.modifiers.is_none() && !typing {
+                Some(Action::ZoomOut)
             } else if i.key_pressed(egui::Key::F5) && !busy {
                 Some(Action::Scan)
             } else if i.key_pressed(egui::Key::Escape) && busy {

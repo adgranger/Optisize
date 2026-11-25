@@ -44,6 +44,7 @@ pub enum Action {
     CollapseAll,
     ToggleOnDisk,
     SetView(View),
+    ZoomOut,
 }
 
 #[derive(Clone, Copy)]
