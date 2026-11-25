@@ -1,6 +1,6 @@
 use crate::scan::tree::{Tree, NONE};
 use crate::scan::{Msg, Scan};
-use crate::ui::{self, drives, side, status, theme::*, toolbar, tree_view::TreeView, treemap::TreemapView, Action, Flags, ScanState};
+use crate::ui::{self, drives, side, status, theme::*, toolbar, tree_view::TreeView, treemap::TreemapView, Action, Flags, ScanState, View};
 use crossbeam_channel::{Receiver, TryRecvError};
 use eframe::egui::{self, Frame, Margin, Panel};
 use std::path::PathBuf;
@@ -25,6 +25,8 @@ pub struct App {
     toast: Option<(String, Instant)>,
     /// Mode d'affichage des tailles (sur disque par défaut), réappliqué à chaque nouvel arbre.
     on_disk: bool,
+    /// Vue centrale ; non persistée, jamais modifiée par un scan.
+    view: View,
     ctx: egui::Context,
 }
 
@@ -88,6 +90,7 @@ impl App {
             cleanup_total: 0,
             toast: None,
             on_disk: true,
+            view: View::Details,
             ctx: cc.egui_ctx.clone(),
         };
         if start.is_some() {
@@ -222,6 +225,16 @@ impl App {
             .collect();
     }
 
+    fn set_view(&mut self, v: View) {
+        if v == self.view {
+            return;
+        }
+        self.view = v;
+        if let (View::Details, Some(id)) = (v, self.selected) {
+            self.tv.scroll_to_row(id);
+        }
+    }
+
     fn selected_path(&self) -> Option<PathBuf> {
         self.selected.map(|s| self.tree.path(s))
     }
@@ -290,6 +303,7 @@ impl App {
             }
             Action::ExpandAll => self.tv.expand_levels(&self.tree, 3),
             Action::CollapseAll => self.tv.collapse_all(),
+            Action::SetView(v) => self.set_view(v),
             Action::ToggleOnDisk => {
                 self.on_disk = !self.on_disk;
                 self.tree.set_on_disk(self.on_disk);
@@ -302,7 +316,9 @@ impl App {
         let typing = ctx.memory(|m| m.focused().is_some());
         ctx.input(|i| {
             let busy = matches!(self.state, ScanState::Scanning | ScanState::Paused);
-            if i.key_pressed(egui::Key::F5) && !busy {
+            if let Some(v) = View::ALL.into_iter().find(|v| i.modifiers.is_none() && i.key_pressed(v.key())) {
+                Some(Action::SetView(v))
+            } else if i.key_pressed(egui::Key::F5) && !busy {
                 Some(Action::Scan)
             } else if i.key_pressed(egui::Key::Escape) && busy {
                 Some(Action::Stop)
@@ -332,7 +348,7 @@ impl eframe::App for App {
         if self.picker.is_some() {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
-        let flags = Flags { state: self.state, has_selection: self.selected.is_some(), on_disk: self.on_disk };
+        let flags = Flags { state: self.state, has_selection: self.selected.is_some(), on_disk: self.on_disk, view: self.view };
         let mut action = self.shortcuts(&ctx);
         let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
         let scanning = self.state == ScanState::Scanning;
@@ -370,9 +386,13 @@ impl eframe::App for App {
             .show(ui, |ui| {
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 14.0;
-                    let h = (ui.ctx().content_rect().height() * 0.45).clamp(260.0, 620.0);
-                    clicked = self.tm.show(ui, &self.tree, self.selected, scanning, h);
-                    ui::types::show(ui, &self.tree);
+                    if self.view.side_treemap() {
+                        let h = (ui.ctx().content_rect().height() * 0.45).clamp(260.0, 620.0);
+                        clicked = self.tm.show(ui, &self.tree, self.selected, scanning, h);
+                    }
+                    if self.view.side_types() {
+                        ui::types::show(ui, &self.tree, false);
+                    }
                     let c = side::Cleanup { scanned: matches!(self.state, ScanState::Done | ScanState::Stopped), total: self.cleanup_total, top: &self.cleanup };
                     action = side::cleanup_card(ui, &c).or(action);
                     let sel = self.selected.map(|s| (self.tree.name(s), self.tree.path(s).to_string_lossy().into_owned()));
@@ -383,11 +403,24 @@ impl eframe::App for App {
         let mut picked = None;
         egui::CentralPanel::default().frame(Frame::new().fill(BG)).show(ui, |ui| {
             Frame::new().inner_margin(Margin::symmetric(16, 12)).show(ui, |ui| {
+                action = ui::views::tabs(ui, self.view).or(action);
+                ui.add_space(6.0);
                 if let Some(root) = drives::show(ui, &self.drives.lock().unwrap().clone(), &self.path) {
                     picked = Some(root);
                 }
             });
-            self.tv.show(ui, &self.tree, &mut self.selected, self.filter.trim(), scanning, now);
+            match self.view {
+                View::Details => self.tv.show(ui, &self.tree, &mut self.selected, self.filter.trim(), scanning, now),
+                View::Map => {
+                    Frame::new().inner_margin(Margin { left: 16, right: 16, top: 0, bottom: 12 }).show(ui, |ui| {
+                        let h = (ui.available_height() - 32.0).max(200.0);
+                        clicked = self.tm.show(ui, &self.tree, self.selected, scanning, h).or(clicked);
+                    });
+                }
+                View::Types => {
+                    Frame::new().inner_margin(Margin::symmetric(16, 0)).show(ui, |ui| ui::types::show(ui, &self.tree, true));
+                }
+            }
         });
 
         if let Some(id) = clicked {

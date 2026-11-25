@@ -7,6 +7,15 @@ pub mod toolbar;
 pub mod tree_view;
 pub mod treemap;
 pub mod types;
+pub mod views;
+
+/// Vue affichée dans le panneau central.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum View {
+    Details,
+    Map,
+    Types,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ScanState {
@@ -34,6 +43,7 @@ pub enum Action {
     ExpandAll,
     CollapseAll,
     ToggleOnDisk,
+    SetView(View),
 }
 
 #[derive(Clone, Copy)]
@@ -41,6 +51,7 @@ pub struct Flags {
     pub state: ScanState,
     pub has_selection: bool,
     pub on_disk: bool,
+    pub view: View,
 }
 
 impl Flags {

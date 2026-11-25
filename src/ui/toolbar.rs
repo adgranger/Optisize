@@ -1,5 +1,5 @@
 use super::theme::*;
-use super::{Action, Flags, ScanState};
+use super::{Action, Flags, ScanState, View};
 use eframe::egui::{self, Button, RichText, Ui};
 
 fn btn(ui: &mut Ui, out: &mut Option<Action>, label: &str, tip: &str, a: Action, enabled: bool) {
@@ -37,12 +37,16 @@ pub fn show(ui: &mut Ui, f: Flags, path: &mut String, filter: &mut String) -> Op
         if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !busy {
             out = Some(Action::Scan);
         }
-        ui.add(
+        let r = ui.add(
             egui::TextEdit::singleline(filter)
                 .hint_text("Filtrer… (nom)")
                 .desired_width(180.0)
                 .margin(egui::vec2(8.0, 7.0)),
         );
+        // Le filtre ne s'applique qu'à Détails : le modifier y ramène.
+        if r.changed() && f.view != View::Details {
+            out = Some(Action::SetView(View::Details));
+        }
     });
     out
 }

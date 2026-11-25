@@ -1,6 +1,6 @@
 use super::theme::*;
 use crate::fmt;
-use crate::scan::tree::{Tree, KINDS, NONE};
+use crate::scan::tree::{Tree, NONE};
 use crate::treemap_layout::{self as tl, Cell, Opts, Rect as LRect, Source};
 use eframe::egui::{self, Align2, Color32, Rect, Sense, Stroke, StrokeKind, Ui};
 use std::time::{Duration, Instant};
@@ -127,8 +127,7 @@ impl TreemapView {
     }
 
     fn types(&self, ui: &mut Ui, tree: &Tree, rect: Rect) -> Option<u32> {
-        let mut items: Vec<_> = KINDS.iter().map(|&k| (k, tree.type_size(k))).filter(|t| t.1 > 0).collect();
-        items.sort_by_key(|t| std::cmp::Reverse(t.1));
+        let items = super::types::kind_rows(tree);
         let w: Vec<u64> = items.iter().map(|t| t.1).collect();
         let p = ui.painter_at(rect);
         for ((k, s), r) in items.iter().zip(tl::squarify(&w, LRect::new(0.0, 0.0, rect.width(), rect.height()))) {

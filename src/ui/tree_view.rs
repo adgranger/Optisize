@@ -88,6 +88,11 @@ impl TreeView {
         self.dirty = true;
     }
 
+    /// Fait défiler jusqu'à `id` s'il est hors champ, sans rien déplier.
+    pub fn scroll_to_row(&mut self, id: u32) {
+        self.scroll_to = Some(id);
+    }
+
     fn sort_children(&self, tree: &Tree, ids: &mut [u32]) {
         let key = |id: &u32| -> u64 {
             let n = &tree.nodes[*id as usize];
@@ -188,7 +193,7 @@ impl TreeView {
             }
         }
 
-        let mut area = egui::ScrollArea::vertical().auto_shrink([false, false]);
+        let mut area = egui::ScrollArea::vertical().id_salt("tree_rows").auto_shrink([false, false]);
         if let Some(id) = self.scroll_to.take() {
             if let Some(i) = self.rows.iter().position(|r| r.0 == id) {
                 let (top, bottom) = (i as f32 * ROW_H, (i + 1) as f32 * ROW_H);
@@ -349,5 +354,18 @@ impl Layout {
         // La colonne Taille rétrécit (la barre disparaît) plutôt que de chevaucher les autres.
         let size_w = (pct_r - W_PCT - GAP - (rect.left() + PAD + 120.0)).clamp(70.0, W_SIZE);
         Layout { date_r, files_r, pct_r, size_x: pct_r - W_PCT - GAP - size_w, size_w }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scroll_to_row_keeps_expanded() {
+        let mut v = TreeView::new();
+        v.scroll_to_row(5);
+        assert_eq!(v.scroll_to, Some(5));
+        assert_eq!(v.expanded, HashSet::from([0]));
     }
 }

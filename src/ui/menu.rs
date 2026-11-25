@@ -1,4 +1,4 @@
-use super::{Action, Flags, ScanState};
+use super::{Action, Flags, ScanState, View};
 use eframe::egui::{self, Button, Ui};
 
 /// Entrée de menu : `action = None` => fonctionnalité pas encore disponible (grisée).
@@ -6,6 +6,15 @@ fn item(ui: &mut Ui, out: &mut Option<Action>, label: &str, key: &str, action: O
     let b = Button::new(label).shortcut_text(key).min_size(egui::vec2(300.0, 28.0));
     if ui.add_enabled(enabled && action.is_some(), b).clicked() {
         *out = action;
+        ui.close();
+    }
+}
+
+/// Entrée de vue : toujours active, la vue courante est marquée.
+fn view_item(ui: &mut Ui, out: &mut Option<Action>, f: Flags, v: View) {
+    let b = Button::new(v.label()).shortcut_text(v.key_text()).selected(f.view == v).min_size(egui::vec2(300.0, 28.0));
+    if ui.add(b).clicked() {
+        *out = Some(Action::SetView(v));
         ui.close();
     }
 }
@@ -40,9 +49,9 @@ pub fn show(ui: &mut Ui, f: Flags) -> Option<Action> {
             item(ui, o, "Tout sélectionner", "Ctrl+A", None, true);
         });
         ui.menu_button("Affichage", |ui| {
-            item(ui, o, "Détails (arborescence)", "F6", None, true);
-            item(ui, o, "Carte (treemap)", "F7", None, true);
-            item(ui, o, "Types de fichiers", "F8", None, true);
+            for v in View::ALL {
+                view_item(ui, o, f, v);
+            }
             item(ui, o, "100 plus gros fichiers", "F9", None, true);
             item(ui, o, "Fichiers les plus anciens", "", None, true);
             item(ui, o, "Doublons", "", None, true);
