@@ -154,7 +154,7 @@ impl TreemapView {
             if self.root == 0 || self.mode == Mode::Types {
                 ui.label(egui::RichText::new("Carte de l'espace").strong());
             } else {
-                up = ui.small_button("⬆").on_hover_text("Remonter d'un niveau (Retour arrière)").clicked();
+                up = ui.small_button("Remonter").on_hover_text("Remonter d'un niveau (Retour arrière)").clicked();
                 let avail = (ui.available_width() - TOGGLE_W).max(0.0);
                 let ids = crumbs(tree, self.root);
                 let labels: Vec<String> = ids.iter().map(|&i| crumb_label(tree, i)).collect();
