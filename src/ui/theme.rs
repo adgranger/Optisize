@@ -1,5 +1,5 @@
 use crate::scan::tree::Kind;
-use eframe::egui::{self, Color32, FontFamily, FontId, TextStyle};
+use eframe::egui::{self, Color32, FontData, FontFamily, FontId, FontInsert, FontPriority, InsertFontFamily, TextStyle};
 
 pub const BG: Color32 = Color32::from_rgb(0x0f, 0x12, 0x16);
 pub const PANEL: Color32 = Color32::from_rgb(0x17, 0x1b, 0x21);
@@ -40,7 +40,22 @@ pub fn mono(size: f32) -> FontId {
     FontId::new(size, FontFamily::Monospace)
 }
 
+/// Nom de la police dans les définitions egui (clé de `font_data`).
+pub const MONO_FONT: &str = "JetBrainsMonoNL-Regular";
+/// JetBrains Mono NL v2.304, SIL OFL 1.1 (assets/fonts/JetBrainsMono-OFL.txt).
+const MONO_TTF: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMonoNL-Regular.ttf");
+
+/// Place JetBrains Mono en tête de la famille Monospace, polices par défaut gardées en repli.
+fn install_fonts(ctx: &egui::Context) {
+    ctx.add_font(FontInsert::new(
+        MONO_FONT,
+        FontData::from_static(MONO_TTF),
+        vec![InsertFontFamily { family: FontFamily::Monospace, priority: FontPriority::Highest }],
+    ));
+}
+
 pub fn apply(ctx: &egui::Context) {
+    install_fonts(ctx);
     let mut style = (*ctx.global_style()).clone();
     let v = &mut style.visuals;
     *v = egui::Visuals::dark();
@@ -62,4 +77,46 @@ pub fn apply(ctx: &egui::Context) {
     style.spacing.button_padding = egui::vec2(12.0, 6.0);
     style.spacing.item_spacing = egui::vec2(8.0, 6.0);
     ctx.set_global_style(style);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ctx() -> egui::Context {
+        let ctx = egui::Context::default();
+        apply(&ctx);
+        let mut out = ctx.run_ui(Default::default(), |_| {});
+        out.textures_delta.clear(); // sinon epaint panique au drop
+        ctx
+    }
+
+    #[test]
+    fn mono_font_bytes_are_truetype() {
+        assert_eq!(MONO_TTF.len(), 208_576);
+        assert_eq!(MONO_TTF[..4], [0x00, 0x01, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn jetbrains_mono_heads_monospace() {
+        let ctx = ctx();
+        ctx.fonts(|f| assert_eq!(f.definitions().families[&FontFamily::Monospace][0], MONO_FONT));
+    }
+
+    #[test]
+    fn default_fonts_kept_as_fallback() {
+        let ctx = ctx();
+        ctx.fonts(|f| {
+            let fam = &f.definitions().families;
+            assert!(fam[&FontFamily::Monospace][1..].iter().any(|n| n == "Hack"));
+            assert_ne!(fam[&FontFamily::Proportional][0], MONO_FONT);
+        });
+    }
+
+    #[test]
+    fn mono_font_digits_same_width() {
+        let ctx = ctx();
+        let w = |s: &str| ctx.fonts_mut(|f| f.layout_no_wrap(s.to_owned(), mono(12.0), Color32::WHITE).size().x);
+        assert!((w("1 111,1 Go") - w("8 888,8 Go")).abs() < 0.01);
+    }
 }

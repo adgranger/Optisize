@@ -40,7 +40,7 @@ pub fn show(ui: &mut Ui, i: &Info) {
             ui.label(RichText::new(t).color(YELLOW));
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(RichText::new(format!("Arbre en mémoire : {}", fmt::size(i.mem as u64))).color(MUTED));
+            ui.label(RichText::new(format!("Arbre en mémoire : {}", fmt::size(i.mem as u64))).font(mono(12.0)).color(MUTED));
         });
     });
 }
