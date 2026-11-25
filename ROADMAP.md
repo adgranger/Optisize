@@ -30,7 +30,7 @@ Dépend de = identifiants qui doivent être `done` avant de commencer.
 
 | ID | Fonctionnalité | Dépend de | Modèle dev | Carte | Statut |
 |---|---|---|---|---|---|
-| F01 | Tester et corriger « Choisir un dossier… » (Ctrl+O) et le clic sur une puce de lecteur | — | sonnet | `docs/cards/F01-choisir-dossier-lecteur.md` | ready |
+| F01 | Tester et corriger « Choisir un dossier… » (Ctrl+O) et le clic sur une puce de lecteur | — | sonnet | `docs/cards/F01-choisir-dossier-lecteur.md` | doing |
 | F02 | Dates affichées en heure locale (pas en UTC) | — | sonnet | — | todo |
 | F03 | Embarquer la police JetBrains Mono pour les tailles | — | sonnet | — | todo |
 | F04 | Taille allouée (clusters) en plus de la taille logique, avec bascule ; liens physiques, fichiers creux, compressés | — | opus | — | todo |

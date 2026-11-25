@@ -47,12 +47,16 @@ fn enumerate() -> Vec<Drive> {
     Vec::new()
 }
 
+pub fn is_active(current: &str, d: &Drive) -> bool {
+    current.to_ascii_uppercase().starts_with(&d.name.to_ascii_uppercase())
+}
+
 /// Retourne la racine du lecteur cliqué.
 pub fn show(ui: &mut Ui, drives: &[Drive], current: &str) -> Option<String> {
     let mut clicked = None;
     ui.horizontal_wrapped(|ui| {
         for d in drives {
-            let active = current.to_ascii_uppercase().starts_with(&d.name);
+            let active = is_active(current, d);
             let pct = d.used as f32 / d.total as f32;
             let (rect, resp) = ui.allocate_exact_size(egui::vec2(230.0, 46.0), Sense::click());
             let p = ui.painter();
@@ -75,4 +79,19 @@ pub fn show(ui: &mut Ui, drives: &[Drive], current: &str) -> Option<String> {
         }
     });
     clicked
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn drive(n: &str) -> Drive {
+        Drive { name: n.into(), root: format!("{n}\\"), used: 0, total: 1 }
+    }
+
+    #[test]
+    fn is_active_ignores_case() {
+        assert!(is_active("c:\\Users", &drive("C:")));
+        assert!(!is_active("c:\\Users", &drive("D:")));
+    }
 }

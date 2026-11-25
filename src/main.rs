@@ -33,6 +33,8 @@ fn bench(path: &str) {
 }
 
 fn main() -> eframe::Result {
+    #[cfg(windows)]
+    quiet_drive_errors();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|a| a == "--bench") {
         #[cfg(windows)]
@@ -60,5 +62,17 @@ fn attach_console() {
     }
     unsafe {
         AttachConsole(u32::MAX);
+    }
+}
+
+/// Pas de boîte système « Il n'y a pas de disque dans le lecteur » (SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX).
+#[cfg(windows)]
+fn quiet_drive_errors() {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn SetErrorMode(mode: u32) -> u32;
+    }
+    unsafe {
+        SetErrorMode(0x0001 | 0x8000);
     }
 }
